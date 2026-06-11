@@ -1,0 +1,37 @@
+schema interop.echo
+
+/// Request for `interop.Echo/say`.
+message EchoRequest {
+  text: string @1
+  shout: bool @2
+}
+
+message EchoResponse {
+  text: string @1
+}
+
+/// Request for `interop.Echo/count`: streams 1..=up_to back.
+message CountRequest {
+  up_to: u32 @1
+  /// When set, the stream fails with ABORTED after this value.
+  fail_after: u32? @2
+}
+
+message CountResponse {
+  value: u32 @1
+}
+
+/// Request for `interop.Echo/fail`: always closes with this status.
+message FailRequest {
+  code: u16 @1
+  detail: string @2
+}
+
+/// Request for `interop.Echo/sleep`: answers after `ms` milliseconds,
+/// checking for cancellation while it waits.
+message SleepRequest {
+  ms: u32 @1
+}
+
+message Empty {
+}

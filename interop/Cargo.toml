@@ -1,0 +1,26 @@
+[package]
+name = "nanorpc-interop"
+description = "Echo service used by every language's interop test suite"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nanobuf = { path = "../../nanobuf/crates/nanobuf" }
+nanorpc = { path = "../crates/nanorpc" }
+nanorpc-wire = { path = "../crates/nanorpc-wire" }
+
+[build-dependencies]
+nanobuf-codegen = { path = "../../nanobuf/crates/nanobuf-codegen" }
+nanobuf-diagnostics = { path = "../../nanobuf/crates/nanobuf-diagnostics" }
+nanobuf-schema = { path = "../../nanobuf/crates/nanobuf-schema" }
+nanobuf-syntax = { path = "../../nanobuf/crates/nanobuf-syntax" }
+
+[[bin]]
+name = "interop-server"
+path = "src/bin/interop_server.rs"
+
+[lints]
+workspace = true

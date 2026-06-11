@@ -1,0 +1,11 @@
+[package]
+name = "nanorpc-wire"
+description = "Frame layer of the nanorpc protocol: headers, statuses, method ids"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "nanorpc"
+description = "RPC over nanobuf messages: blocking, multiplexed, dependency-free"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nanobuf = { path = "../../../nanobuf/crates/nanobuf" }
+nanorpc-wire = { path = "../nanorpc-wire" }
+
+[lints]
+workspace = true

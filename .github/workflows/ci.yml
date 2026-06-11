@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: nanorpc
+      - uses: actions/checkout@v4
+        with:
+          repository: Force67/nanobuf
+          path: nanobuf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: nanorpc
+      - run: cargo fmt --check
+        working-directory: nanorpc
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: nanorpc
+      - run: cargo test
+        working-directory: nanorpc
+
+  interop:
+    name: Interop (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: nanorpc
+      - uses: actions/checkout@v4
+        with:
+          repository: Force67/nanobuf
+          path: nanobuf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: nanorpc
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest
+      - run: bash runtimes/python/run_tests.sh
+        working-directory: nanorpc
