@@ -33,9 +33,10 @@ plain TCP stream with a small frame header instead. Status codes keep
 gRPC's exact numbers, so a service can move over without rewiring its
 dashboards or retry rules.
 
-The runtime is blocking, one thread per connection and one per in-flight
-call. Server streaming works today, client and bidirectional do not. There
-is no TLS, so terminate it underneath.
+The runtime is blocking and capped, so a flood of connections or calls is
+refused rather than left to sink the host. Server streaming works today,
+client and bidirectional do not. There is no TLS, so terminate it
+underneath.
 
 ## Repository layout
 

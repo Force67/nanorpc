@@ -16,6 +16,7 @@
 //! ```
 
 mod client;
+mod limit;
 mod server;
 
 pub use client::{Client, Streaming};

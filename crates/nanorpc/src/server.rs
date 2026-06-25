@@ -14,6 +14,7 @@ use nanorpc_wire::{
     write_frame,
 };
 
+use crate::limit::Semaphore;
 use crate::{Message, Method, StreamMethod};
 
 /// What a handler knows about its call beyond the request itself.
@@ -136,6 +137,8 @@ impl Router {
 pub struct Server {
     router: Arc<Router>,
     max_message: u32,
+    max_connections: usize,
+    max_calls: usize,
 }
 
 impl Server {
@@ -143,6 +146,8 @@ impl Server {
         Server {
             router: Arc::new(router),
             max_message: nanorpc_wire::MAX_FRAME_LEN,
+            max_connections: 1024,
+            max_calls: 1024,
         }
     }
 
@@ -152,16 +157,40 @@ impl Server {
         self
     }
 
-    /// Accept loop. Each connection gets a thread; each in-flight call
-    /// gets a thread. Returns only when the listener fails.
+    /// Caps connections served at once (default 1024). At the cap the
+    /// listener stops accepting, so further connections wait in the OS
+    /// backlog until one closes.
+    pub fn max_connections(mut self, count: usize) -> Server {
+        self.max_connections = count.max(1);
+        self
+    }
+
+    /// Caps in-flight calls across all connections (default 1024). A call
+    /// arriving at the cap is answered with `RESOURCE_EXHAUSTED` instead of
+    /// spawning work, which keeps one busy peer from exhausting the host.
+    pub fn max_concurrent_calls(mut self, count: usize) -> Server {
+        self.max_calls = count.max(1);
+        self
+    }
+
+    /// Accept loop. Each connection gets a thread; each in-flight call gets
+    /// a thread; both are bounded by the configured caps. Returns only when
+    /// the listener fails.
     pub fn serve(&self, listener: TcpListener) -> io::Result<()> {
+        let connections = Semaphore::new(self.max_connections);
+        let calls = Semaphore::new(self.max_calls);
         loop {
             let (stream, peer) = listener.accept()?;
+            // Blocks here once max_connections are live, leaving the rest in
+            // the accept backlog until a connection thread frees its permit.
+            let permit = connections.acquire();
             let router = Arc::clone(&self.router);
+            let calls = Arc::clone(&calls);
             let max_message = self.max_message;
             std::thread::spawn(move || {
+                let _permit = permit;
                 // A failed connection takes only itself down.
-                let _ = serve_connection(&router, stream, peer, max_message);
+                let _ = serve_connection(&router, stream, peer, max_message, &calls);
             });
         }
     }
@@ -172,6 +201,7 @@ fn serve_connection(
     mut stream: TcpStream,
     peer: SocketAddr,
     max_message: u32,
+    calls: &Arc<Semaphore>,
 ) -> io::Result<()> {
     stream.set_nodelay(true)?;
     stream.write_all(&PREFACE)?;
@@ -192,6 +222,24 @@ fn serve_connection(
                 if payload.len() < CALL_PROLOGUE_LEN {
                     break; // protocol violation: drop the connection
                 }
+                let Some(permit) = calls.try_acquire() else {
+                    // At the in-flight call cap. Refuse this one without
+                    // spawning, so the read loop keeps serving the calls
+                    // already running on this connection.
+                    let header = FrameHeader {
+                        kind: FrameKind::CLOSE,
+                        flags: 0,
+                        status: Code::RESOURCE_EXHAUSTED.0,
+                        call_id: header.call_id,
+                        length: 0,
+                    };
+                    write_frame(
+                        &mut *writer.lock().unwrap(),
+                        header,
+                        b"server at call capacity",
+                    )?;
+                    continue;
+                };
                 let prologue =
                     CallPrologue::decode(&payload[..CALL_PROLOGUE_LEN].try_into().unwrap());
                 let cancelled = Arc::new(AtomicBool::new(false));
@@ -204,6 +252,7 @@ fn serve_connection(
                 let cancels = Arc::clone(&cancels);
                 let call_id = header.call_id;
                 std::thread::spawn(move || {
+                    let _permit = permit;
                     run_call(
                         &router,
                         &writer,

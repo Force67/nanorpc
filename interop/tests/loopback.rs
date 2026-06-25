@@ -238,3 +238,52 @@ fn ping_measures_the_connection() {
     let rtt = client.ping(Duration::from_secs(5)).unwrap();
     assert!(rtt < Duration::from_secs(1));
 }
+
+#[test]
+fn calls_past_the_cap_are_refused() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let _ = Server::new(nanorpc_interop::router())
+            .max_concurrent_calls(1)
+            .serve(listener);
+    });
+    let client = std::sync::Arc::new(Client::connect(addr).unwrap());
+
+    // Hold the one call slot with a request that sleeps.
+    let busy = std::sync::Arc::clone(&client);
+    let held = std::thread::spawn(move || {
+        busy.call(
+            SLEEP,
+            &SleepRequest { ms: 500 },
+            Some(Duration::from_secs(5)),
+        )
+    });
+    std::thread::sleep(Duration::from_millis(100));
+
+    let err = client
+        .call(
+            SAY,
+            &EchoRequest {
+                text: "overflow".to_string(),
+                shout: false,
+            },
+            Some(Duration::from_secs(5)),
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), Some(Code::RESOURCE_EXHAUSTED));
+
+    // The slow call still completes, and the freed slot serves the next one.
+    held.join().unwrap().unwrap();
+    let reply = client
+        .call(
+            SAY,
+            &EchoRequest {
+                text: "slot freed".to_string(),
+                shout: false,
+            },
+            Some(Duration::from_secs(5)),
+        )
+        .unwrap();
+    assert_eq!(reply.text, "slot freed");
+}
